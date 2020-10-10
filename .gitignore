@@ -3,6 +3,11 @@
 # Learn more about .gitignore:
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
+# compiled cpp file
+*.o
+bin/
+npshell
+
 # Node artifact files
 node_modules/
 dist/
