@@ -8,11 +8,11 @@ OBJS=$(patsubst %.cpp, %, $(SRCS))
 OUT_DIR=bin
 OUT_OBJS=$(addprefix $(OUT_DIR)/, $(OBJS))
 
-$(TARGET): $(OUT_OBJS)
+$(TARGET): $(OUT_OBJS) npshell.cpp
 	$(CC) -o $@ npshell.cpp
 
 $(OUT_DIR)/%: %.cpp
-	$(CC) -o $@ -c $<
+	$(CC) -o $@ $<
 
 .PHONY: clean
 clean:
