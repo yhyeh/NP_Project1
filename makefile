@@ -2,8 +2,8 @@
 CC=g++
 TARGET=npshell
 
-SRCS=$(shell ls *.cpp)
-OBJS=$(patsubst %.cpp, %.o, $(SRCS))
+SRCS=$(shell ls *.cpp | grep -v 'npshell*')
+OBJS=$(patsubst %.cpp, %, $(SRCS))
 
 OUT_DIR=bin
 OUT_OBJS=$(addprefix $(OUT_DIR)/, $(OBJS))
@@ -11,7 +11,7 @@ OUT_OBJS=$(addprefix $(OUT_DIR)/, $(OBJS))
 $(TARGET): $(OUT_OBJS)
 	$(CC) -o $@ npshell.cpp
 
-$(OUT_DIR)/%.o: %.cpp
+$(OUT_DIR)/%: %.cpp
 	$(CC) -o $@ -c $<
 
 .PHONY: clean
