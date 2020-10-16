@@ -10,13 +10,25 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 using namespace std;
 
+/* functions */
 char** vecStrToChar(vector<string>);
 bool hasPipe(vector<string>);
 void printStrVec(vector<string>);
 vector<vector<string>> splitPipe(vector<string>);
+void purePipe(vector<string>, int);
+
+/* global vars */
+int redirectFd;
+
+/* macros */
+#define PURE_PIPE 0
+#define FILE_REDI 1
 
 int main(int argc, char* const argv[], char *envp[]) {
 
@@ -71,87 +83,118 @@ int main(int argc, char* const argv[], char *envp[]) {
       
       if (cmd[cmd.size()-1].substr(0, 1) == "|"){ // |n?
         // string afterPipe = cmd[cmd.size()-1].substr(1);
-        cout << "This is |n" << endl;
+        // cout << "This is |n" << endl;
       }else if (cmd[cmd.size()-1].substr(0, 1) == "!"){ // !n
-        cout << "This is !n" << endl;
+        // cout << "This is !n" << endl;
       }else if (cmd.size() > 1 && cmd[cmd.size()-2] == ">"){
-        cout << "This is >" << endl;
+        // cout << "This is >" << endl;
         string fname = cmd.back();
+        redirectFd = open(fname.c_str(), O_RDWR | O_CREAT | O_CLOEXEC);
+        if (redirectFd < 0){
+          cerr << "Error: redirect file cannot open" << endl;
+          continue;
+        }
         // remove string after >
-        // process as multi pipe
-      }else if (hasPipe(cmd)){
+        cmd.pop_back();
+        cmd.pop_back();
+        // process as purepipe
+        purePipe(cmd, FILE_REDI);
+        if(close(redirectFd) < 0) {
+          cerr << "Error: cannot close file @1"<< endl;
+        }
+      }else {
         // cout << "This is |" << endl;
-        vector<vector<string>> cmdVec = splitPipe(cmd);
-        vector<pid_t> childPids;
-        pid_t pid;
-        int pfd[2];
-        int prevPipeOutput;
-
-        for (int icmd = 0; icmd < cmdVec.size(); icmd++){
-          vector<string> curCmd = cmdVec[icmd];
-          if (pipe(pfd) == -1){
-            cerr << "Error: pipe create fail" << endl;
-            return 0;
-          }
-          if ((pid = fork()) < 0) {
-            cerr << "Error: fork failed" << endl;
-            return 0;
-          }
-          /* child process */
-          if (pid == 0){
-            close(pfd[0]);
-            if (icmd == 0){ // first cmd
-              dup2(pfd[1], STDOUT_FILENO); // output to pipe
-              
-            }else if (icmd == cmdVec.size()-1){ // last cmd
-              dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
-            }else{ // mid cmd
-              dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
-              dup2(pfd[1], STDOUT_FILENO); // output to pipe
-            }
-
-            if(execvp(curCmd[0].c_str(), vecStrToChar(curCmd)) == -1){
-              cerr << "Unknown command: [" << curCmd[0] << "]" << endl;
-              close(pfd[1]); // necessary?
-              exit(0);
-            }
-          } /* parent process */
-          else {
-            close(pfd[1]);
-            childPids.push_back(pid);
-            prevPipeOutput = pfd[0];
-          }
-        }
-        /* wait child processes finished */
-        for(int iproc = 0; iproc < childPids.size(); iproc++){
-          waitpid(childPids[iproc], NULL, 0);
-          cout << "child " << iproc << " finished" << endl;
-        }
-        close(pfd[0]);
-
-
-      }else{ // single cmd
-        pid_t pid;
-        if ((pid = fork()) < 0) {
-          cerr << "Error: fork failed" << endl;
-          return 0;
-        }
-        if (pid == 0){ // child
-          // string restOfCmd = cmdInLine.substr(cmd[0].size()+1);
-          if(execvp(cmd[0].c_str(), vecStrToChar(cmd)) == -1){
-            cerr << "Unknown command: [" << cmd[0] << "]" << endl;
-          }
-          
-        }else{ // parent
-          waitpid(pid, NULL, 0);
-        }
+        purePipe(cmd, PURE_PIPE);
       }
-      
       
     }
   }
 
   return 0;
+}
+
+void purePipe(vector<string> cmd, int cmdType){
+  vector<vector<string>> cmdVec = splitPipe(cmd);
+  vector<pid_t> childPids;
+  pid_t pid;
+  int pfd[2];
+  int prevPipeOutput;
+
+  if (cmdVec.size() == 1) { // no pipe
+    if ((pid = fork()) < 0) {
+      cerr << "Error: fork failed" << endl;
+      exit(0);
+    }
+    if (pid == 0){ // child
+      if (cmdType == FILE_REDI){
+        dup2(redirectFd, STDOUT_FILENO);
+      }
+      if (execvp(cmdVec[0][0].c_str(), vecStrToChar(cmdVec[0])) == -1){
+        cerr << "Unknown command: [" << cmdVec[0][0] << "]." << endl;
+        if (cmdType == FILE_REDI) {
+          if(close(redirectFd) < 0) {
+            cerr << "Error: cannot close file @3"<< endl;
+          }
+        }
+        exit(0);
+      }
+      
+    }else{ // parent
+      waitpid(pid, NULL, 0);
+    }
+    return;
+  }
+  // pipe
+  for (int icmd = 0; icmd < cmdVec.size(); icmd++){
+    vector<string> curCmd = cmdVec[icmd];
+    if (pipe(pfd) == -1){
+      cerr << "Error: pipe create fail" << endl;
+      exit(0);
+    }
+    if ((pid = fork()) < 0) {
+      cerr << "Error: fork failed" << endl;
+      exit(0);
+    }
+    /* child process */
+    if (pid == 0){
+      close(pfd[0]);
+      if (icmd == 0){ // first cmd
+        dup2(pfd[1], STDOUT_FILENO); // output to pipe
+      }else if (icmd == cmdVec.size()-1){ // last cmd
+        dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
+        if (cmdType == PURE_PIPE){
+          // stdout directly
+        }else if (cmdType == FILE_REDI){
+          dup2(redirectFd, STDOUT_FILENO);
+        }
+      }else{ // mid cmd
+        dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
+        dup2(pfd[1], STDOUT_FILENO); // output to pipe
+      }
+
+      if(execvp(curCmd[0].c_str(), vecStrToChar(curCmd)) == -1){
+        cerr << "Unknown command: [" << curCmd[0] << "]." << endl;
+        close(pfd[1]); // necessary?
+        if (cmdType == FILE_REDI) {
+          if(close(redirectFd) < 0) {
+            cerr << "Error: cannot close file @2"<< endl;
+          }
+        }
+        exit(0);
+      }
+    } /* parent process */
+    else {
+      close(pfd[1]);
+      childPids.push_back(pid);
+      prevPipeOutput = pfd[0];
+    }
+  }
+  /* wait child processes finished */
+  for(int iproc = 0; iproc < childPids.size(); iproc++){
+    waitpid(childPids[iproc], NULL, 0);
+    // cout << "child " << iproc << " finished" << endl;
+  }
+  close(pfd[0]);
 }
 
 char** vecStrToChar(vector<string> cmd){
