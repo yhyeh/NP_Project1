@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <map>
 
 using namespace std;
 
@@ -22,15 +23,21 @@ bool hasPipe(vector<string>);
 void printStrVec(vector<string>);
 vector<vector<string>> splitPipe(vector<string>);
 void purePipe(vector<string>);
+int strToInt(string);
+// vecetor<int> getPredecessor(int);
 
 /* global vars */
 int redirectFd;
 // vector<string> lineHistory;
 vector<int> outLinePfd;
+vector<int> successor;
 int iLine = -1;
 vector<pid_t> childPids;
 bool lsFlag;
 bool pureFlag;
+map<int, vector<int>> mapSuccessor;
+map<int, vector<int>>::iterator mit;
+bool sharePipeFlag;
 
 /* macros */
 #define PURE_PIPE 0
@@ -51,13 +58,14 @@ int main(int argc, char* const argv[], char *envp[]) {
     cmd.clear();
     lsFlag = false;
     pureFlag = false;
+    sharePipeFlag = false;
     cout << "% ";
     // fflush(stdout);
     getline(cin, cmdInLine);
     // lineHistory.push_back(cmdInLine);
     iLine++; // for num pipe later
     outLinePfd.push_back(-1);
-
+    successor.push_back(-1);
     
     // parse one line
     istringstream inCmd(cmdInLine);
@@ -91,12 +99,31 @@ int main(int argc, char* const argv[], char *envp[]) {
       // Where is > or | ?
       
       if (cmd[cmd.size()-1].substr(0, 1) == "|"){ // |n?
-        // string afterPipe = cmd[cmd.size()-1].substr(1);
-        // cout << "This is |n" << endl;
+        cout << "This is |n" << endl;
+        string afterMark = cmd[cmd.size()-1].substr(1);
+        successor[iLine] = iLine + strToInt(afterMark);
+        cmd.pop_back();
+        mit = mapSuccessor.find(successor[iLine]);
+        if (mit == mapSuccessor.end()){ // pass to new successor
+          mapSuccessor[successor[iLine]] = vector<int>(2, -1);
+        }else{
+          sharePipeFlag = true;
+        }
+        purePipe(cmd);
+        if (!sharePipeFlag){
+          mapSuccessor[successor[iLine]][0] = outLinePfd[iLine];
+        }else {
+          close(outLinePfd[iLine]);
+          cout << "parent close [" << outLinePfd[iLine] << "]" << endl;
+        }
       }else if (cmd[cmd.size()-1].substr(0, 1) == "!"){ // !n
-        // cout << "This is !n" << endl;
-      }else if (cmd.size() > 1 && cmd[cmd.size()-2] == ">"){
-        cout << "This is >" << endl;
+        cout << "This is !n" << endl;
+        string afterMark = cmd[cmd.size()-1].substr(1);
+        successor[iLine] = iLine + strToInt(afterMark);
+
+      }
+      else if (cmd.size() > 1 && cmd[cmd.size()-2] == ">"){
+        // cout << "This is >" << endl;
         string fname = cmd.back();
         // remove string after >
         cmd.pop_back();
@@ -122,12 +149,15 @@ int main(int argc, char* const argv[], char *envp[]) {
 
           redirectFile.close();
           close(outLinePfd[iLine]);
+
           exit(0);
         }else{ // parent
           waitpid(printerPid, NULL, 0);
           close(outLinePfd[iLine]);
+          cout << "parent close [" << outLinePfd[iLine] << "]" << endl;
         }
-      }else { // 0 ~ n pipe 
+      }
+      else { // 0 ~ n pipe 
         cout << "This is pure pipe" << endl;
         pureFlag = true;
         purePipe(cmd);
@@ -158,9 +188,16 @@ int main(int argc, char* const argv[], char *envp[]) {
         }else{ // parent
           waitpid(printerPid, NULL, 0);
           close(outLinePfd[iLine]);
+          cout << "parent close [" << outLinePfd[iLine] << "]" << endl;
         }
       }
-      
+      mit = mapSuccessor.find(iLine);
+      if (mit != mapSuccessor.end()){
+        close(mapSuccessor[iLine][0]);
+        close(mapSuccessor[iLine][1]);
+        cout << "parent close [" << mapSuccessor[iLine][0] << "]" << endl;
+        cout << "parent close [" << mapSuccessor[iLine][1] << "]" << endl;
+      }
     }
   }
 
@@ -192,7 +229,7 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
     return;
   }
 
-  
+  // vector<int> predecessor = getPredecessor(iLine);  
   // 0 ~ n pipe
   for (int icmd = 0; icmd < cmdVec.size(); icmd++){
     vector<string> curCmd = cmdVec[icmd];
@@ -207,11 +244,31 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
     /* child process */
     if (pid == 0){
       close(pfd[0]);
+
       if (icmd == 0){ // first cmd
+        map<int, vector<int>>::iterator mit;
+        mit = mapSuccessor.find(iLine);
+        if (mit != mapSuccessor.end()){ // has predecessor
+          prevPipeOutput = mapSuccessor[iLine][0];
+          dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
+        }
+        if(successor[iLine] != -1 && icmd == cmdVec.size()-1){
+          // numpipe && last cmd
+          if (sharePipeFlag){
+            dup2(mapSuccessor[successor[iLine]][1], STDOUT_FILENO); // output to shared pipe
+            close(pfd[1]);
+          }
+        }
         dup2(pfd[1], STDOUT_FILENO); // output to pipe
       }else { // mid cmd
         dup2(prevPipeOutput, STDIN_FILENO); // stdin from previous cmd
-        dup2(pfd[1], STDOUT_FILENO); // output to pipe
+        if (successor[iLine] != -1 && sharePipeFlag && icmd == cmdVec.size()-1){
+          // |n or !n & share pipe with previous line
+          dup2(mapSuccessor[successor[iLine]][1], STDOUT_FILENO); // output to shared pipe
+          close(pfd[1]);
+        }else {
+          dup2(pfd[1], STDOUT_FILENO); // output to pipe
+        }
       }
 
       if(execvp(curCmd[0].c_str(), vecStrToChar(curCmd)) == -1){
@@ -226,12 +283,27 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
       }
     } /* parent process */
     else {
-      close(pfd[1]);
+      cout << "create pfd: " << pfd[0] << " " << pfd[1] << endl; 
+      if (successor[iLine] != -1 && !sharePipeFlag && icmd == cmdVec.size()-1){
+        // numpipe && pass to new successor && last cmd
+        mapSuccessor[successor[iLine]][1] = pfd[1];
+      }else {
+        close(pfd[1]);
+        cout << "parent close [" << pfd[1] << "]" << endl;
+
+      }
       childPids.push_back(pid);
       prevPipeOutput = pfd[0];
     }
   }
   outLinePfd[iLine] = pfd[0];
+  /*
+  if (successor[iLine] != -1 && sharePipeFlag){
+    outLinePfd[iLine] = mapSuccessor[successor[iLine]][0];
+  }else {
+    outLinePfd[iLine] = pfd[0];
+  }
+  */
   /* wait child processes finished *//*
   for(int iproc = 0; iproc < childPids.size(); iproc++){
     waitpid(childPids[iproc], NULL, 0);
@@ -239,23 +311,23 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
   }*/
   // close(pfd[0]);
 }
-
+/*
+vecetor<int> getPredecessor(int iLine){
+  vector<int> predecessor;
+  for (int i=0; i < successor.size(); i++){
+    if (successor[i] == iLine){
+      predecessor.push_back(i);
+    }
+  }
+  return predecessor;
+}
+*/
 char** vecStrToChar(vector<string> cmd){
   char** result = (char**)malloc(sizeof(char*)*(cmd.size()+1));
   for(int i = 0; i < cmd.size(); i++){
     result[i] = strdup(cmd[i].c_str());
   }
   result[cmd.size()] = NULL;
-  /*
-  cout << "content in vecstrtochar:" << endl;
-  for(int i = 0; i < cmd.size(); i++){
-    string tmp(result[i]);
-    cout << tmp << endl;
-  }
-  if (result[cmd.size()]==NULL){
-    cout << "NULL" << endl;
-  }
-  */
   return result;
 }
 
@@ -297,3 +369,6 @@ vector<vector<string>> splitPipe(vector<string> cmd){
   return cmdVec;
 }
 
+int strToInt(string str){
+  return atoi(str.c_str());
+}
