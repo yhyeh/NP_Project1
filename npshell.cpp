@@ -76,6 +76,9 @@ int main(int argc, char* const argv[], char *envp[]) {
     }
 
     if (cmd.size() == 0){
+      iLine--;
+      outLinePfd.pop_back();
+      successor.pop_back();
       continue;
     }else if (cmd[0] == "exit"){
       return 0;
@@ -158,8 +161,9 @@ int main(int argc, char* const argv[], char *envp[]) {
           }
 
           redirectFile.close();
-          close(outLinePfd[iLine]);
-
+          for (int fd = 3; fd <= outLinePfd[iLine]; fd++){
+            close(fd);
+          }
           exit(0);
         }else{ // parent
           waitpid(printerPid, NULL, 0);
@@ -193,7 +197,9 @@ int main(int argc, char* const argv[], char *envp[]) {
           while (getline(cin, line)) {
             cout << line << endl;
           }
-          close(outLinePfd[iLine]);
+          for (int fd = 3; fd <= outLinePfd[iLine]; fd++){
+            close(fd);
+          }
           exit(0);
         }else{ // parent
           waitpid(printerPid, NULL, 0);
@@ -247,8 +253,7 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
     }
     /* child process */
     if (pid == 0){
-      close(pfd[0]);
-
+      
       if (icmd == 0){ // first cmd
         map<int, vector<int>>::iterator mit;
         mit = mapSuccessor.find(iLine);
@@ -303,6 +308,11 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
           }
         }else {
           dup2(pfd[1], STDOUT_FILENO); // output to pipe
+        }
+      }
+      for (int fd = 3; fd <= pfd[0]; fd++){
+        if (fd != prevPipeOutput){
+          close(fd);
         }
       }
       close(pfd[1]);
