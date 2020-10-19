@@ -263,9 +263,10 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
       cerr << "Error: pipe create fail" << endl;
       exit(0);
     }
-    if ((pid = fork()) < 0) {
-      cerr << "Error: fork failed" << endl;
-      exit(0);
+    while ((pid = fork()) < 0) {
+      waitpid(-1, NULL, 0);
+      // cerr << "Error: fork failed" << endl;
+      //exit(0);
     }
     /* child process */
     if (pid == 0){
@@ -358,7 +359,6 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
         close(prevPipeOutput);
       }
       prevPipeOutput = pfd[0];
-      waitpid(-1, NULL, 0);
     }
   }
   outLinePfd[iLine] = pfd[0];
