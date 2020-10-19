@@ -145,8 +145,10 @@ int main(int argc, char* const argv[]) {
         purePipe(cmd);
         char buf[256];
         ofstream redirectFile(fname);
-        while(read(outLinePfd[iLine], buf, sizeof(buf))){
-          redirectFile << buf;
+        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf))){
+          buf[outSize] = '\0';
+          string strBuf(buf);
+          redirectFile << strBuf;
           memset(buf, 0, sizeof(buf));
         }
         close(outLinePfd[iLine]);
@@ -185,8 +187,10 @@ int main(int argc, char* const argv[]) {
         purePipe(cmd);
         if (lsFlag == true) continue;
         char buf[256];
-        while(read(outLinePfd[iLine], buf, sizeof(buf))){
-          cout << buf;
+        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf))){
+          buf[outSize] = '\0';
+          string strBuf(buf);
+          cout << strBuf;
           memset(buf, 0, sizeof(buf));
         }
         close(outLinePfd[iLine]);
