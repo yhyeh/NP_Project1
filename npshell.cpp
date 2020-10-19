@@ -45,7 +45,7 @@ bool pipeErrFlag;
 #define FILE_REDI 1
 #define NUMB_PIPE 2
 
-int main(int argc, char* const argv[], char *envp[]) {
+int main(int argc, char* const argv[]) {
 
   if(setenv("PATH", "bin:.", 1) == -1){
     cerr << "Error: set env err" << endl;
@@ -71,7 +71,7 @@ int main(int argc, char* const argv[], char *envp[]) {
     
     // parse one line
     istringstream inCmd(cmdInLine);
-    while (inCmd >> wordInCmd) {
+    while (getline(inCmd, wordInCmd, ' ')) {
       cmd.push_back(wordInCmd);
     }
 
@@ -81,6 +81,7 @@ int main(int argc, char* const argv[], char *envp[]) {
       successor.pop_back();
       continue;
     }else if (cmd[0] == "exit"){
+      exit(0);
       return 0;
     }else if (cmd[0] == "printenv"){
       if (cmd.size() == 2){
@@ -142,8 +143,16 @@ int main(int argc, char* const argv[], char *envp[]) {
         cmd.pop_back();
         // process as purepipe
         purePipe(cmd);
-
+        char buf[256];
+        ofstream redirectFile(fname);
+        while(read(outLinePfd[iLine], buf, sizeof(buf))){
+          redirectFile << buf;
+          memset(buf, 0, sizeof(buf));
+        }
+        close(outLinePfd[iLine]);
+        redirectFile.close();
         // fork printer, wait printer
+        /*
         pid_t printerPid;
         if ((printerPid = fork()) < 0) {
           cerr << "Error: fork failed" << endl;
@@ -151,13 +160,11 @@ int main(int argc, char* const argv[], char *envp[]) {
           exit(0);
         }
         if (printerPid == 0){ // child
-          // redirectFd = open(fname.c_str(), O_RDWR | O_CREAT | O_CLOEXEC);
           ofstream redirectFile(fname);
           dup2(outLinePfd[iLine], STDIN_FILENO);
-          /* print */
           string line;
           while (getline(cin, line)) {
-            redirectFile << line << endl;
+            redirectFile << "printer: " << line << endl;
           }
 
           redirectFile.close();
@@ -170,13 +177,21 @@ int main(int argc, char* const argv[], char *envp[]) {
           close(outLinePfd[iLine]);
           // cout << "parent close [" << outLinePfd[iLine] << "]" << endl;
         }
+        */
       }
       else { // 0 ~ n pipe 
         // cout << "This is pure pipe" << endl;
         pureFlag = true;
         purePipe(cmd);
         if (lsFlag == true) continue;
+        char buf[256];
+        while(read(outLinePfd[iLine], buf, sizeof(buf))){
+          cout << buf;
+          memset(buf, 0, sizeof(buf));
+        }
+        close(outLinePfd[iLine]);
         // fork printer, wait printer
+        /*
         pid_t printerPid;
         if ((printerPid = fork()) < 0) {
           cerr << "Error: fork failed" << endl;
@@ -185,17 +200,10 @@ int main(int argc, char* const argv[], char *envp[]) {
         }
         if (printerPid == 0){ // child
           dup2(outLinePfd[iLine], STDIN_FILENO);
-          /* test printer with number
-          vector<string> tmp;
-          tmp.push_back("number");
-          if (execvp(tmp[0].c_str(), vecStrToChar(tmp)) == -1){
-            cerr << "Unknown command: [" << tmp[0] << "]." << endl;
-            exit(0);
-          }
-          */
+
           string line;
           while (getline(cin, line)) {
-            cout << line << endl;
+            cout << "printer: " << line << endl;
           }
           for (int fd = 3; fd <= outLinePfd[iLine]; fd++){
             close(fd);
@@ -206,6 +214,8 @@ int main(int argc, char* const argv[], char *envp[]) {
           close(outLinePfd[iLine]);
           // cout << "parent close [" << outLinePfd[iLine] << "]" << endl;
         }
+        */
+        
       }
       
     }
