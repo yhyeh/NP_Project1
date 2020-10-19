@@ -358,6 +358,7 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
         close(prevPipeOutput);
       }
       prevPipeOutput = pfd[0];
+      waitpid(-1, NULL, 0);
     }
   }
   outLinePfd[iLine] = pfd[0];
