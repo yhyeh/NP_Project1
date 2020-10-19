@@ -25,6 +25,7 @@ vector<vector<string>> splitPipe(vector<string>);
 void purePipe(vector<string>);
 int strToInt(string);
 // vecetor<int> getPredecessor(int);
+void childHandler(int);
 
 /* global vars */
 int redirectFd;
@@ -50,6 +51,7 @@ int main(int argc, char* const argv[]) {
   if(setenv("PATH", "bin:.", 1) == -1){
     cerr << "Error: set env err" << endl;
   }
+  signal (SIGCHLD, childHandler);
   string wordInCmd;
   string cmdInLine;
   vector<string> cmd;
@@ -440,4 +442,10 @@ vector<vector<string>> splitPipe(vector<string> cmd){
 
 int strToInt(string str){
   return atoi(str.c_str());
+}
+
+void childHandler(int sig){
+  while(waitpid(-1, NULL, WNOHANG) > 0){
+
+  }
 }
