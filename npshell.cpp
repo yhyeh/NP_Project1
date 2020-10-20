@@ -147,7 +147,8 @@ int main(int argc, char* const argv[]) {
         purePipe(cmd);
         char buf[256];
         ofstream redirectFile(fname);
-        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf))){
+        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1)){
+          // cout << "buf catch size: " << outSize << endl;
           buf[outSize] = '\0';
           string strBuf(buf);
           redirectFile << strBuf;
@@ -189,7 +190,8 @@ int main(int argc, char* const argv[]) {
         purePipe(cmd);
         if (lsFlag == true) continue;
         char buf[256];
-        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf))){
+        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1)){
+          // cout << "buf catch size: " << outSize << endl;
           buf[outSize] = '\0';
           string strBuf(buf);
           cout << strBuf;
