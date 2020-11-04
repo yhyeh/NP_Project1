@@ -146,13 +146,16 @@ int main(int argc, char* const argv[]) {
         // process as purepipe
         purePipe(cmd);
         char buf[256];
+        ssize_t outSize;
         ofstream redirectFile(fname);
-        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1)){
+        while(true){
+          outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1);
           // cout << "buf catch size: " << outSize << endl;
           buf[outSize] = '\0';
           string strBuf(buf);
           redirectFile << strBuf;
           memset(buf, 0, sizeof(buf));
+          if(outSize < sizeof(buf)-1 || buf[outSize] == '\0') break;
         }
         close(outLinePfd[iLine]);
         redirectFile.close();
@@ -190,7 +193,12 @@ int main(int argc, char* const argv[]) {
         purePipe(cmd);
         if (lsFlag == true) continue;
         char buf[256];
-        while(ssize_t outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1)){
+        ssize_t outSize;
+        while(outSize = read(outLinePfd[iLine], buf, sizeof(buf)-1)){
+          if (outSize < 0){
+            cerr << "read err" << endl;
+            break;
+          }
           // cout << "buf catch size: " << outSize << endl;
           buf[outSize] = '\0';
           string strBuf(buf);
@@ -329,7 +337,8 @@ void purePipe(vector<string> cmd){ // fork and connect sereval worker, but not g
           dup2(pfd[1], STDOUT_FILENO); // output to pipe
         }
       }
-      for (int fd = 3; fd <= pfd[0]; fd++){
+      int nfds = getdtablesize();
+      for (int fd = 3; fd <= nfds; fd++){
         if (fd != prevPipeOutput){
           close(fd);
         }
